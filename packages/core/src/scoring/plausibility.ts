@@ -1,4 +1,4 @@
-import type { CapturePoint, LatLng } from "../types/index.js";
+import type { CapturePoint, LatLng, TransportMode } from "../types/index.js";
 
 /**
  * Physical-plausibility guardrails. A trip is rejected before scoring if it
@@ -8,6 +8,21 @@ import type { CapturePoint, LatLng } from "../types/index.js";
 
 /** Fastest ground/air speed we will tolerate between two captures (m/s). */
 export const MAX_PLAUSIBLE_SPEED_MPS = 300; // ~1080 km/h, above any airliner cruise
+
+/**
+ * Per-mode speed ceilings (m/s), generous to avoid false rejections (GPS
+ * noise, stops, detours) but low enough that a flight can't be claimed as
+ * ground travel. Used by score-trip: the trip's stored mode picks the cap.
+ */
+export const MODE_MAX_SPEED_MPS: Record<TransportMode, number> = {
+  walk: 4,     // ~14 km/h — brisk walk/jog
+  bike: 14,    // ~50 km/h
+  bus: 40,     // ~144 km/h
+  car: 55,     // ~200 km/h
+  ferry: 25,   // ~90 km/h
+  train: 100,  // ~360 km/h — covers high-speed rail
+  plane: MAX_PLAUSIBLE_SPEED_MPS,
+};
 
 const EARTH_RADIUS_M = 6_371_000;
 
@@ -49,7 +64,9 @@ export function isPlausibleSequence(
     (x, y) => new Date(x.capturedAt).getTime() - new Date(y.capturedAt).getTime(),
   );
   for (let i = 1; i < sorted.length; i++) {
-    if (impliedSpeedMps(sorted[i - 1], sorted[i]) > maxSpeedMps) return false;
+    const prev = sorted[i - 1];
+    const curr = sorted[i];
+    if (prev && curr && impliedSpeedMps(prev, curr) > maxSpeedMps) return false;
   }
   return true;
 }

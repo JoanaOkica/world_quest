@@ -1,13 +1,19 @@
 import { useQuery } from "@tanstack/react-query";
-import type { Feature, FeatureCollection, Geometry } from "geojson";
+import type { Feature, FeatureCollection, Polygon } from "geojson";
 import { supabase } from "../../lib/supabase";
 import { useUserId } from "../../state/authStore";
 import { ownerColor } from "./ownerColor";
 
-interface RegionGeo {
+/** Which owners to paint on the globe. */
+export type MapFilter = "all" | "me" | "friends";
+
+interface RegionRow {
   id: string;
   name: string;
-  geojson: Geometry;
+  min_lng: number;
+  min_lat: number;
+  max_lng: number;
+  max_lat: number;
 }
 
 interface OwnerRow {
@@ -22,21 +28,36 @@ export interface RegionFeatureProps {
   color: string;
 }
 
+/** Region bounding box → GeoJSON Polygon (the schema stores bboxes, not PostGIS). */
+function bboxPolygon(r: RegionRow): Polygon {
+  return {
+    type: "Polygon",
+    coordinates: [[
+      [r.min_lng, r.min_lat],
+      [r.max_lng, r.min_lat],
+      [r.max_lng, r.max_lat],
+      [r.min_lng, r.max_lat],
+      [r.min_lng, r.min_lat],
+    ]],
+  };
+}
+
 /**
  * Build a colored GeoJSON FeatureCollection of all regions. Ownership comes from
  * `region_owner`, which RLS already limits to you + your accepted friends, so a
- * stranger's claim is never colored in. Regions with no visible owner render as
- * "unclaimed".
+ * stranger's claim is never colored in. The filter narrows which owners are
+ * painted: "me" (only your regions), "friends" (only friends'), or "all".
+ * Unclaimed/filtered-out regions render in the neutral color.
  */
-export function useMapData() {
+export function useMapData(filter: MapFilter = "all") {
   const youId = useUserId();
 
   return useQuery({
-    queryKey: ["map-data", youId],
-    queryFn: async (): Promise<FeatureCollection<Geometry, RegionFeatureProps>> => {
+    queryKey: ["map-data", youId, filter],
+    queryFn: async (): Promise<FeatureCollection<Polygon, RegionFeatureProps>> => {
       const [{ data: regions, error: rErr }, { data: owners, error: oErr }] =
         await Promise.all([
-          supabase.from("regions_geojson").select("id, name, geojson"),
+          supabase.from("regions").select("id, name, min_lng, min_lat, max_lng, max_lat"),
           supabase.from("region_owner").select("region_id, owner_id"),
         ]);
       if (rErr) throw rErr;
@@ -47,13 +68,18 @@ export function useMapData() {
         ownerByRegion.set(o.region_id, o.owner_id);
       }
 
-      const features: Feature<Geometry, RegionFeatureProps>[] = (
-        (regions ?? []) as RegionGeo[]
+      const features: Feature<Polygon, RegionFeatureProps>[] = (
+        (regions ?? []) as RegionRow[]
       ).map((r) => {
-        const ownerId = ownerByRegion.get(r.id) ?? null;
+        let ownerId = ownerByRegion.get(r.id) ?? null;
+        if (ownerId) {
+          const isYou = ownerId === youId;
+          if (filter === "me" && !isYou) ownerId = null;
+          if (filter === "friends" && isYou) ownerId = null;
+        }
         return {
           type: "Feature",
-          geometry: r.geojson,
+          geometry: bboxPolygon(r),
           properties: {
             regionId: r.id,
             name: r.name,

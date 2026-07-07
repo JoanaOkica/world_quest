@@ -10,6 +10,8 @@ import {
   scoreTripInputSchema,
   visitPoints,
   isPlausibleSequence,
+  transportModeSchema,
+  MODE_MAX_SPEED_MPS,
   type CapturePoint,
 } from "@terra/core";
 import { preflight, json } from "../_shared/cors.ts";
@@ -33,11 +35,18 @@ Deno.serve(async (req) => {
 
   // The trip must belong to the caller and not already be scored.
   const { data: trip, error: tripErr } = await db
-    .from("trips").select("id, user_id, status").eq("id", tripId).single();
+    .from("trips").select("id, user_id, status, transport_mode").eq("id", tripId).single();
   if (tripErr || !trip || trip.user_id !== user.id) {
     return json({ error: "trip_not_found" }, 404);
   }
   if (trip.status === "verified") return json({ error: "trip_already_scored" }, 409);
+
+  // The mode is NEVER taken from the request body — a client could log a
+  // plane trip (×0.1) and then claim "walk" (×3.0) at scoring time. The
+  // stored trip row is the single source of truth for the multiplier.
+  const modeParsed = transportModeSchema.safeParse(trip.transport_mode);
+  if (!modeParsed.success) return json({ error: "invalid_trip_mode" }, 422);
+  const mode = modeParsed.data;
 
   // Pull the trip's integrity-verified captures. Each proves presence in the
   // region that contains its GPS point.
@@ -51,19 +60,21 @@ Deno.serve(async (req) => {
     return json({ error: "no_verified_capture" }, 422);
   }
 
-  // Plausibility: reject impossible-speed transitions between captures.
+  // Plausibility: reject impossible-speed transitions between captures. The
+  // ceiling comes from the trip's STORED mode, so a flight logged as ground
+  // travel is caught here (walking speed can't cover flight distances).
   const points: CapturePoint[] = captures.map((c) => ({
     at: { lat: c.lat, lng: c.lng },
     capturedAt: new Date(c.captured_at).toISOString(),
   }));
-  if (!isPlausibleSequence(points)) {
-    return json({ error: "implausible_trip" }, 422);
+  if (!isPlausibleSequence(points, MODE_MAX_SPEED_MPS[mode])) {
+    return json({ error: "implausible_trip_for_mode" }, 422);
   }
 
   // Resolve which regions the captures actually prove presence in.
   const provenRegions = new Set<string>();
   for (const c of captures) {
-    const { data: regionId } = await db.rpc("region_at", { lng: c.lng, lat: c.lat });
+    const { data: regionId } = await db.rpc("region_at", { p_lng: c.lng, p_lat: c.lat });
     if (regionId) provenRegions.add(regionId as string);
   }
 
@@ -75,7 +86,7 @@ Deno.serve(async (req) => {
   const now = new Date().toISOString();
   const results: { regionId: string; points: number }[] = [];
   for (const v of scored) {
-    const pts = visitPoints(v);
+    const pts = visitPoints({ regionId: v.regionId, mode });
     const { error: rErr } = await db.rpc("reinforce_claim", {
       p_user_id: user.id,
       p_region_id: v.regionId,

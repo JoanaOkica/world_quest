@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { isPlausibleSequence, haversineMeters, impliedSpeedMps } from "./plausibility.js";
+import {
+  isPlausibleSequence,
+  haversineMeters,
+  impliedSpeedMps,
+  MODE_MAX_SPEED_MPS,
+} from "./plausibility.js";
 import type { CapturePoint } from "../types/index.js";
 
 describe("plausibility", () => {
@@ -24,6 +29,16 @@ describe("plausibility", () => {
       { at: { lat: 41.15, lng: -8.61 }, capturedAt: "2026-07-01T08:00:30Z" }, // 275km in 30s
     ];
     expect(isPlausibleSequence(seq)).toBe(false);
+  });
+
+  it("rejects a flight-speed trip claimed as walking", () => {
+    const seq: CapturePoint[] = [
+      { at: { lat: 38.72, lng: -9.14 }, capturedAt: "2026-07-01T08:00:00Z" },
+      { at: { lat: 41.15, lng: -8.61 }, capturedAt: "2026-07-01T11:00:00Z" }, // ~275km in 3h
+    ];
+    // Plausible for a train, impossible on foot.
+    expect(isPlausibleSequence(seq, MODE_MAX_SPEED_MPS.train)).toBe(true);
+    expect(isPlausibleSequence(seq, MODE_MAX_SPEED_MPS.walk)).toBe(false);
   });
 
   it("treats simultaneous different points as impossible", () => {

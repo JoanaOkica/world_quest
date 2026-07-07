@@ -35,9 +35,15 @@ Deno.serve(async (req) => {
     return json({ error: "trip_not_found" }, 404);
   }
 
-  // Which region contains this point? (PostGIS ST_Contains via region_at()).
+  // The photo must live under the caller's own folder for this trip — a
+  // capture row must never point at another user's object (or nothing).
+  if (!storagePath.startsWith(`${user.id}/${tripId}/`)) {
+    return json({ error: "storage_path_not_owned" }, 403);
+  }
+
+  // Which region contains this point? (bbox containment via region_at()).
   const { data: regionId, error: regionErr } = await db
-    .rpc("region_at", { lng, lat });
+    .rpc("region_at", { p_lng: lng, p_lat: lat });
   if (regionErr) return json({ error: "region_lookup_failed" }, 500);
   if (!regionId) return json({ error: "capture_outside_any_region" }, 422);
 
