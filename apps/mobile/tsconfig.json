@@ -1,0 +1,12 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "jsx": "react-native",
+    "moduleResolution": "bundler",
+    "paths": {
+      "@terra/core": ["../../packages/core/src/index.ts"]
+    }
+  },
+  "include": ["src", "app.config.ts"]
+}

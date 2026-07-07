@@ -1,0 +1,11 @@
+node_modules/
+.expo/
+dist/
+*.log
+.env
+.env.local
+apps/mobile/.env
+supabase/.branches/
+supabase/.temp/
+*.tsbuildinfo
+.DS_Store

@@ -1,0 +1,32 @@
+# Supabase CLI config. Run `supabase start` for a local stack.
+project_id = "terra"
+
+[db]
+major_version = 15
+
+[auth]
+enable_signup = true
+[auth.sms]
+enable_signup = true          # phone/SMS is our primary auth + anti-spam gate
+
+[storage]
+enable = true
+# Capture photos live in a PRIVATE bucket, served only via short-lived signed
+# URLs with EXIF GPS stripped (docs/safety-and-security.md §Photos).
+[storage.buckets.captures]
+public = false
+file_size_limit = "10MiB"
+allowed_mime_types = ["image/jpeg", "image/png"]
+
+# Edge functions --------------------------------------------------------------
+# User-invoked functions verify the caller's JWT (default). resolve-claims is a
+# scheduled/service job authorized by the service-role key itself, so the
+# platform JWT check is disabled and the function checks the bearer manually.
+[functions.score-trip]
+verify_jwt = true
+[functions.verify-capture]
+verify_jwt = true
+[functions.delete-account]
+verify_jwt = true
+[functions.resolve-claims]
+verify_jwt = false

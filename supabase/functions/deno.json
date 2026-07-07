@@ -1,0 +1,8 @@
+{
+  "imports": {
+    "@terra/core": "../../packages/core/src/index.ts",
+    "@supabase/supabase-js": "npm:@supabase/supabase-js@^2.45.0",
+    "zod": "npm:zod@^3.23.0"
+  },
+  "lint": { "rules": { "tags": ["recommended"] } }
+}

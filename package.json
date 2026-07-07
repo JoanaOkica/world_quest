@@ -1,0 +1,11 @@
+{
+  "name": "world-quest",
+  "private": true,
+  "packageManager": "pnpm@9.0.0",
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "mobile": "pnpm --filter mobile start",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm --filter @terra/core test"
+  }
+}
